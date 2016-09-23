@@ -46,8 +46,6 @@ static u32 dio1_mask;
 
 static int cb_rxdone_ref=LUA_NOREF;
 static int cb_rxtimeout_ref=LUA_NOREF;
-static int cb_caddone_ref=LUA_NOREF;
-static int cb_caddetected_ref=LUA_NOREF;
 static int cb_txdone_ref=LUA_NOREF;
 
 static void write(u8 reg, u8 val) {
@@ -222,11 +220,15 @@ static void rx_single() {
 	write(RegDioMapping1,MAP_DIO0_LORA_RXDONE|MAP_DIO1_LORA_RXTOUT);
 }
 
+static u8 cadSF=MC2_SF7|MC2_RX_PAYLOAD_CRCON;
+static u32 cadFreq=868100000;
+
 static void scanner() {
 	loraOpMode(OPMODE_SLEEP);
-	setFreq(868100000);
+	setFreq(cadFreq);
 	setDR(MC2_SF7,MC1_BW_125,MC1_CR_4_5,MC2_RX_PAYLOAD_CRCON,0x27,0x14);
-	loraOpMode(OPMODE_CAD);
+	cadSF=MC2_SF7|MC2_RX_PAYLOAD_CRCON;
+	cad();
 	state=cad_state;
 }
 
@@ -266,6 +268,19 @@ static void dio1Handler() {
 static void dio0Handler() {
 	switch (state) {
 	case cad_state:
+		if (cadSF < MC2_SF12) {
+			cadSF+=0x10;
+			write(LORARegModemConfig2,cadSF);
+			if (cadSF==0xB4){
+				write(LORARegModemConfig3,0x0C);
+			}
+			if (cadSF==0xA4){
+				write(LORARegSymbTimeoutLsb,0x05);
+			}
+			cad();
+		} else {
+			scanner();
+		}
 		break;
 	case scan_state:
 		cad();
