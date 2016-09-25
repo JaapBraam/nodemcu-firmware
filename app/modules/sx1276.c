@@ -16,7 +16,9 @@
 #endif
 #endif
 
+static u8 DEBUG;
 static void debug(char buf[]){
+	if (!DEBUG) return;
 	while(*buf){
 		platform_uart_send(0,*buf++);
 	}
@@ -203,7 +205,6 @@ static void rx_done(u32 tmst) {
 		}
 	}
 }
-
 static void cad() {
 	loraOpMode(OPMODE_CAD);
 	write(RegDioMapping1,MAP_DIO0_LORA_CADONE|MAP_DIO1_LORA_CADDET);
@@ -224,7 +225,9 @@ static void rx_single() {
 static u8 cadSF=MC2_SF7|MC2_RX_PAYLOAD_CRCON;
 static u32 cadFreq=868100000;
 
+static u32 signal;
 static void scanner() {
+	signal=0;
 	state=idle_state;
 	debug("\nS");
 	loraOpMode(OPMODE_SLEEP);
@@ -243,6 +246,7 @@ static void checkRssi(){
 	case scan_state:
 		rssi=read(LORARegRssiValue);
 		if (rssi > rssi_threshold){
+			signal++;
 			state=cad_state;
 			debug("+");
 		}
@@ -251,8 +255,11 @@ static void checkRssi(){
 		rssi=read(LORARegRssiValue);
 		if (rssi < rssi_threshold){
 			debug("-");
-			scanner();
+			if (!signal--){
+				scanner();
+			}
 		} else {
+			signal++;
 			debug("c");
 		}
 		break;
@@ -260,8 +267,11 @@ static void checkRssi(){
 		rssi=read(LORARegRssiValue);
 		if (rssi < rssi_threshold){
 			debug("-");
-			scanner();
+			if(!signal--){
+				scanner();
+			}
 		} else {
+			signal++;
 			debug("r");
 		}
 		break;
@@ -297,6 +307,7 @@ static void dio0Handler() {
 			if (cadSF==0xA4){
 				write(LORARegSymbTimeoutLsb,0x05);
 			}
+			signal=3;
 			cad();
 			debug("^");
 		} else {
@@ -305,9 +316,11 @@ static void dio0Handler() {
 		}
 		break;
 	case scan_state:
+		signal=0;
 		cad();
 		break;
 	case cad_detected_state:
+		signal=3;
 		rx_single();
 		break;
 	case rx_single_state:
@@ -495,6 +508,11 @@ static int sx1276_readReg(lua_State *L){
 	return 1;
 }
 
+static int sx1276_debug(lua_State *L){
+	DEBUG=luaL_optinteger(L,1,1);
+	return 0;
+}
+
 static int sx1276_setup(lua_State *L) {
 	unsigned nss = luaL_checkinteger(L, 1);
 	luaL_argcheck(L, platform_gpio_exists(nss), 2,
@@ -523,6 +541,7 @@ static const LUA_REG_TYPE sx1276_map[] = {
 		{ LSTRKEY("callbacks"), LFUNCVAL(sx1276_callbacks) },
 		{ LSTRKEY("state"), LFUNCVAL(sx1276_state) },
 		{ LSTRKEY("readReg"), LFUNCVAL(sx1276_readReg) },
+		{ LSTRKEY("debug"), LFUNCVAL(sx1276_debug) },
 		{ LSTRKEY( "SF6"  ),LNUMVAL( MC2_SF6  ) },
 		{ LSTRKEY( "SF7"  ),LNUMVAL( MC2_SF7  ) },
 		{ LSTRKEY( "SF8"  ),LNUMVAL( MC2_SF8  ) },
