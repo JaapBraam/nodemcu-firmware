@@ -273,7 +273,7 @@ static void dio1Handler() {
 	switch (state) {
 	case scan_state:
 	case cad_state:
-		rx_single();
+		state=cad_detected_state;
 		debug("D");
 		break;
 	case rx_single_state:
@@ -306,6 +306,9 @@ static void dio0Handler() {
 		break;
 	case scan_state:
 		cad();
+		break;
+	case cad_detected_state:
+		rx_single();
 		break;
 	case rx_single_state:
 		rx_done(timestamp);
