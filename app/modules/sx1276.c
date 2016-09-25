@@ -7,7 +7,6 @@
 #include "c_types.h"
 #include "c_string.h"
 #include "cpu_esp8266.h"
-#include "gpio.h"
 #include "sx1276.h"
 #include "hw_timer.h"
 
@@ -18,7 +17,9 @@
 #endif
 
 static void debug(char buf[]){
-
+	while(*buf){
+		platform_uart_send(0,*buf++);
+	}
 }
 
 typedef enum {
@@ -204,7 +205,7 @@ static void rx_done(u32 tmst) {
 }
 
 static void cad() {
-	loraOpMode(OPMODE_RX);
+	loraOpMode(OPMODE_CAD);
 	write(RegDioMapping1,MAP_DIO0_LORA_CADONE|MAP_DIO1_LORA_CADDET);
 }
 
@@ -215,7 +216,7 @@ static void rx() {
 }
 
 static void rx_single() {
-	loraOpMode(OPMODE_RX);
+	loraOpMode(OPMODE_RX_SINGLE);
 	state=rx_single_state;
 	write(RegDioMapping1,MAP_DIO0_LORA_RXDONE|MAP_DIO1_LORA_RXTOUT);
 }
@@ -224,32 +225,48 @@ static u8 cadSF=MC2_SF7|MC2_RX_PAYLOAD_CRCON;
 static u32 cadFreq=868100000;
 
 static void scanner() {
+	state=idle_state;
+	debug("\nS");
 	loraOpMode(OPMODE_SLEEP);
 	setFreq(cadFreq);
 	setDR(MC2_SF7,MC1_BW_125,MC1_CR_4_5,MC2_RX_PAYLOAD_CRCON,0x27,0x14);
 	cadSF=MC2_SF7|MC2_RX_PAYLOAD_CRCON;
 	cad();
-	state=cad_state;
+	state=scan_state;
 }
 
 static u8 rssi_threshold=50;
 static u8 rssi;
 static void checkRssi(){
+	ets_intr_lock();
 	switch(state){
 	case scan_state:
 		rssi=read(LORARegRssiValue);
 		if (rssi > rssi_threshold){
 			state=cad_state;
+			debug("+");
 		}
 		break;
 	case cad_state:
+		rssi=read(LORARegRssiValue);
+		if (rssi < rssi_threshold){
+			debug("-");
+			scanner();
+		} else {
+			debug("c");
+		}
+		break;
 	case rx_single_state:
 		rssi=read(LORARegRssiValue);
 		if (rssi < rssi_threshold){
+			debug("-");
 			scanner();
+		} else {
+			debug("r");
 		}
 		break;
 	}
+	ets_intr_unlock();
 }
 
 static void dio1Handler() {
@@ -257,9 +274,12 @@ static void dio1Handler() {
 	case scan_state:
 	case cad_state:
 		rx_single();
+		debug("D");
 		break;
 	case rx_single_state:
 		rx_timeout(timestamp);
+		debug("T");
+		scanner();
 		break;
 	}
 	write(LORARegIrqFlags,0xFF);
@@ -278,7 +298,9 @@ static void dio0Handler() {
 				write(LORARegSymbTimeoutLsb,0x05);
 			}
 			cad();
+			debug("^");
 		} else {
+			debug("T");
 			scanner();
 		}
 		break;
@@ -286,6 +308,9 @@ static void dio0Handler() {
 		cad();
 		break;
 	case rx_single_state:
+		rx_done(timestamp);
+		scanner();
+		break;
 	case rx_state:
 		rx_done(timestamp);
 		break;
@@ -295,16 +320,20 @@ static void dio0Handler() {
 
 static uint32_t dio_hook(uint32_t ret_gpio_status) {
 	timestamp=system_get_time();
+	ets_intr_lock();
 	if (ret_gpio_status & dio1_mask){
+		//debug("1");
 		dio1Handler();
 		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio1_mask);
 		ret_gpio_status&=~dio1_mask;
 	}
 	if (ret_gpio_status & dio0_mask){
+		//debug("0");
 		dio0Handler();
 		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio0_mask);
 		ret_gpio_status&=~dio0_mask;
 	}
+	ets_intr_unlock();
 	return ret_gpio_status;
 }
 
@@ -335,7 +364,9 @@ static void setupSPI(u8 nss) {
 
 static const os_param_t SX1276_TIMER_OWNER = 0x4c6f5261; // LoRa
 
+static u32 callbacks;
 static void ICACHE_RAM_ATTR timer_async_cb(os_param_t p) {
+	callbacks++;
 	checkRssi();
 }
 
@@ -364,9 +395,11 @@ static int sx1276_scanner(lua_State *L){
 	if (old_ref != LUA_NOREF && cb_rxtimeout_ref != old_ref) {
 		luaL_unref(L,LUA_REGISTRYINDEX,old_ref);
 	}
-	stopTimer();
+	rssi_threshold=luaL_optinteger(L,3,50);
+	u32 interval=luaL_optinteger(L,4,341); // 1/3 symbol on SF7
 	scanner();
-	startTimer(341); // 1/3 symbol on SF7
+	if (interval)
+		startTimer(interval);
 	return 0;
 }
 
@@ -437,6 +470,27 @@ static int sx1276_version(lua_State *L) {
 	return 1;
 }
 
+static int sx1276_callbacks(lua_State *L) {
+	lua_pushinteger(L, (lua_Integer) (callbacks));
+	callbacks=0;
+	return 1;
+}
+
+static int sx1276_state(lua_State *L) {
+	lua_pushinteger(L, (lua_Integer) (state));
+	u8 opmode=read(RegOpMode);
+	lua_pushinteger(L, (lua_Integer) (opmode));
+	u8 diomapping1=read(RegDioMapping1);
+	lua_pushinteger(L, (lua_Integer) (diomapping1));
+	return 3;
+}
+
+static int sx1276_readReg(lua_State *L){
+	u8 reg= luaL_checkinteger(L,1);
+	u8 value= read(reg);
+	lua_pushinteger(L,(lua_Integer)(value));
+	return 1;
+}
 
 static int sx1276_setup(lua_State *L) {
 	unsigned nss = luaL_checkinteger(L, 1);
@@ -448,7 +502,6 @@ static int sx1276_setup(lua_State *L) {
 	unsigned dio1 = luaL_checkinteger(L, 3);
 	luaL_argcheck(L, platform_gpio_exists(dio1) && dio1 > 0, 3,
 			"Invalid interrupt pin");
-
 	setupIO(dio0,dio1);
 	setupSPI(nss);
 
@@ -463,7 +516,10 @@ static const LUA_REG_TYPE sx1276_map[] = {
 		{ LSTRKEY("dataRate"), LFUNCVAL(sx1276_dataRate) },
 		{ LSTRKEY("frequency"), LFUNCVAL(sx1276_frequency) },
 		{ LSTRKEY("rx"), LFUNCVAL(sx1276_rx) },
-		{ LSTRKEY("scanner"), LFUNCVAL(sx1276_rx) },
+		{ LSTRKEY("scanner"), LFUNCVAL(sx1276_scanner) },
+		{ LSTRKEY("callbacks"), LFUNCVAL(sx1276_callbacks) },
+		{ LSTRKEY("state"), LFUNCVAL(sx1276_state) },
+		{ LSTRKEY("readReg"), LFUNCVAL(sx1276_readReg) },
 		{ LSTRKEY( "SF6"  ),LNUMVAL( MC2_SF6  ) },
 		{ LSTRKEY( "SF7"  ),LNUMVAL( MC2_SF7  ) },
 		{ LSTRKEY( "SF8"  ),LNUMVAL( MC2_SF8  ) },
