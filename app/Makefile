@@ -45,7 +45,8 @@ SUBDIRS= 					\
 	http					\
 	fatfs					\
 	esp-gdbstub				\
-	websocket
+	websocket				\
+	lmic
 
 endif # } PDIR
 
@@ -95,6 +96,7 @@ COMPONENTS_eagle.app.v6 = 			\
 	esp-gdbstub/libgdbstub.a		\
 	net/libnodemcu_net.a			\
 	modules/libmodules.a			\
+	lmic/lmic.a					\
 
 # Inspect the modules library and work out which modules need to be linked.
 # For each enabled module, a symbol name of the form XYZ_module_selected is
