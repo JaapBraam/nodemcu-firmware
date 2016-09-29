@@ -28,6 +28,8 @@
 //! \file
 #include "lmic.h"
 
+extern unsigned char LMIC_DEBUG_LEVEL;
+
 #if !defined(MINRX_SYMS)
 #define MINRX_SYMS 5
 #endif // !defined(MINRX_SYMS)
@@ -696,7 +698,8 @@ static void initJoinLoop (void) {
 #if defined(CFG_TxContinuousMode)
   LMIC.txChnl = 0;
 #else
-    LMIC.txChnl = os_getRndU1() % 6;
+  //LMIC.txChnl = os_getRndU1() % 6;
+  LMIC.txChnl = 0;
 #endif
     LMIC.adrTxPow = 14;
     setDrJoin(DRCHG_SET, DR_SF7);
@@ -984,6 +987,7 @@ static bit_t decodeFrame (void) {
     u1_t hdr    = d[0];
     u1_t ftype  = hdr & HDR_FTYPE;
     int  dlen   = LMIC.dataLen;
+    const char *window = (LMIC.txrxFlags & TXRX_DNW1) ? "RX1" : ((LMIC.txrxFlags & TXRX_DNW2) ? "RX2" : "Other");
     if( dlen < OFF_DAT_OPTS+4 ||
         (hdr & HDR_MAJOR) != HDR_MAJOR_V1 ||
         (ftype != HDR_FTYPE_DADN  &&  ftype != HDR_FTYPE_DCDN) ) {
@@ -993,6 +997,8 @@ static bit_t decodeFrame (void) {
                             e_.info   = dlen < 4 ? 0 : os_rlsbf4(&d[dlen-4]),
                             e_.info2  = hdr + (dlen<<8)));
       norx:
+	  	if(LMIC_DEBUG_LEVEL > 0)
+	  		c_printf("%lu: Invalid downlink, window=%s\n", os_getTime(), window);
         LMIC.dataLen = 0;
         return 0;
     }
@@ -1263,6 +1269,8 @@ static bit_t decodeFrame (void) {
         LMIC.dataBeg = poff;
         LMIC.dataLen = pend-poff;
     }
+	if(LMIC_DEBUG_LEVEL > 0)
+		c_printf("%lu: Received downlink, window=%s, port=%d, ack=%d\n", os_getTime(), window, port, ackup);
     return 1;
 }
 
@@ -1397,8 +1405,11 @@ static bit_t processJoinAccept (void) {
         dlen = OFF_CFLIST;
         for( u1_t chidx=3; chidx<8; chidx++, dlen+=3 ) {
             u4_t freq = convFreq(&LMIC.frame[dlen]);
-            if( freq )
+            if( freq ) {
                 LMIC_setupChannel(chidx, freq, 0, -1);
+				if (LMIC_DEBUG_LEVEL > 1)
+					c_printf("%lu: Setup channel, idx=%d, freq=%lu\n", os_getTime(), chidx, (unsigned long)freq);
+            }
         }
     }
 
@@ -1925,6 +1936,8 @@ static void startRxPing (xref2osjob_t osjob) {
 
 // Decide what to do next for the MAC layer of a device
 static void engineUpdate (void) {
+	if(LMIC_DEBUG_LEVEL > 0)
+		c_printf("%lu: engineUpdate, opmode=0x%x\n", os_getTime(), LMIC.opmode);
     // Check for ongoing state: scan or TX/RX transaction
     if( (LMIC.opmode & (OP_SCAN|OP_TXRXPEND|OP_SHUTDOWN)) != 0 ) 
         return;

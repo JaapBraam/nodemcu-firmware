@@ -27,6 +27,7 @@
 
 #include "lmic.h"
 
+extern unsigned char LMIC_DEBUG_LEVEL;
 // ---------------------------------------- 
 // Registers Mapping
 #define RegFifo                                    0x00 // common
@@ -487,6 +488,16 @@ static void txfsk () {
     
     // now we actually start the transmission
     opmode(OPMODE_TX);
+	if (LMIC_DEBUG_LEVEL > 0) {
+		u1_t sf = getSf(LMIC.rps) + 6; // 1 == SF7
+		u1_t bw = getBw(LMIC.rps);
+		u1_t cr = getCr(LMIC.rps);
+		c_printf("%lu: TXMODE, freq=%lu, len=%d, SF=%d, BW=%d, CR=4/%d, IH=%d\n",
+				os_getTime(), LMIC.freq, LMIC.dataLen, sf,
+				bw == BW125 ? 125 : (bw == BW250 ? 250 : 500),
+				cr == CR_4_5 ? 5 : (cr == CR_4_6 ? 6 : (cr == CR_4_7 ? 7 : 8)),
+				getIh(LMIC.rps));
+	}
 }
 
 static void txlora () {
@@ -601,6 +612,25 @@ static void rxlora (u1_t rxmode) {
     } else { // continous rx (scan or rssi)
         opmode(OPMODE_RX); 
     }
+	if (LMIC_DEBUG_LEVEL > 0) {
+		if (rxmode == RXMODE_RSSI) {
+			c_printf("RXMODE_RSSI\n");
+		} else {
+			u1_t sf = getSf(LMIC.rps) + 6; // 1 == SF7
+			u1_t bw = getBw(LMIC.rps);
+			u1_t cr = getCr(LMIC.rps);
+			c_printf("%lu: %s, freq=%lu, SF=%d, BW=%d, CR=4/%d, IH=%d\n",
+					os_getTime(),
+					rxmode == RXMODE_SINGLE ?
+							"RXMODE_SINGLE" :
+							(rxmode == RXMODE_SCAN ?
+									"RXMODE_SCAN" : "UNKNOWN_RX"), LMIC.freq,
+					sf, bw == BW125 ? 125 : (bw == BW250 ? 250 : 500),
+					cr == CR_4_5 ?
+							5 : (cr == CR_4_6 ? 6 : (cr == CR_4_7 ? 7 : 8)),
+					getIh(LMIC.rps));
+		}
+	}
 }
 
 static void rxfsk (u1_t rxmode) {

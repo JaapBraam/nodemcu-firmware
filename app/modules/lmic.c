@@ -17,14 +17,7 @@
 #include "c_types.h"
 #include "c_string.h"
 
-static void debug(u8 msg[]){
-	int i=0;
-	while(msg[i]) {
-		platform_uart_send(0,msg[i++]);
-	}
-	platform_uart_send(0,0x0D);
-	platform_uart_send(0,0x0A);
-}
+unsigned char LMIC_DEBUG_LEVEL=0;
 
 static u32 nss_pin=GPIO_ID_NONE;
 static u32 rst_pin=GPIO_ID_NONE;
@@ -42,16 +35,19 @@ extern void radio_irq_handler(u8 dio);
 static uint32_t  dio_hook(uint32_t  ret_gpio_status) {
 	if (ret_gpio_status & dio0_mask){
 		radio_irq_handler(0);
+		//c_printf("dio %d\n",0);
 		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio0_mask);
 		ret_gpio_status&=!dio0_mask;
 	}
 	if (ret_gpio_status & dio1_mask){
 		radio_irq_handler(1);
+		//c_printf("dio %d\n",1);
 		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio1_mask);
 		ret_gpio_status&=!dio1_mask;
 	}
 	if (ret_gpio_status & dio2_mask){
 		radio_irq_handler(2);
+		//c_printf("dio %d\n",2);
 		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio2_mask);
 		ret_gpio_status&=!dio2_mask;
 	}
@@ -61,7 +57,6 @@ static uint32_t  dio_hook(uint32_t  ret_gpio_status) {
 static const os_param_t LMIC_OWNER = 0x6C6D6963; // "lmic"
 
 static void ICACHE_RAM_ATTR lmic_cb(os_param_t p) {
-  (void) p;
   os_runloop_once();
   platform_hw_timer_arm_us(LMIC_OWNER, 10);
 }
@@ -73,7 +68,6 @@ static void ICACHE_RAM_ATTR lmic_cb(os_param_t p) {
  * initialize hardware (IO, SPI, TIMER, IRQ).
  */
 void hal_init(void) {
-	debug("hal_init - start");
 	// IO
 	if (rxtx_pin != GPIO_ID_NONE)
 		platform_gpio_mode(rxtx_pin, PLATFORM_GPIO_OUTPUT, PLATFORM_GPIO_FLOAT);
@@ -117,7 +111,6 @@ void hal_init(void) {
 	platform_hw_timer_init(LMIC_OWNER, FRC1_SOURCE, FALSE);
 	platform_hw_timer_set_func(LMIC_OWNER,lmic_cb,0);
     platform_hw_timer_arm_us(LMIC_OWNER, 10);
-	debug("hal_init - end");
 }
 
 /*
@@ -192,8 +185,14 @@ u4_t hal_ticks (void){
  * busy-wait until specified timestamp (in ticks) is reached.
  */
 void hal_waitUntil (u4_t time){
-	u4_t wait=time-hal_ticks();
-	os_delay_us(wait<<4);
+	s4_t wait=time-hal_ticks();
+	if (wait <= 0) return;
+	wait<<=4;
+	while (wait > 1000){
+		os_delay_us(1000);
+		wait-=1000;
+	}
+	os_delay_us(wait);
 }
 
 /*
@@ -202,8 +201,8 @@ void hal_waitUntil (u4_t time){
  *   - otherwise rewind timer for target time or full period and return 0
  */
 u1_t hal_checkTimer (u4_t targettime){
-	u4_t wait=targettime-hal_ticks();
-	return (wait <= 2);
+	s4_t wait=targettime-hal_ticks();
+	return (wait <= 1);
 }
 
 /*
@@ -212,7 +211,7 @@ u1_t hal_checkTimer (u4_t targettime){
  *   - action could be HALT or reboot
  */
 void hal_failed (void){
-	debug("hal_failed");
+	c_printf("hal_failed...");
 	system_restart();
 }
 
@@ -238,7 +237,6 @@ void os_getDevEui (xref2u1_t buf){
 
 static int cb_onevent_ref=LUA_NOREF;
 void onEvent(ev_t e){
-	debug("onEvent");
 	if (cb_onevent_ref != LUA_NOREF) {
 		lua_State *L = lua_getstate();
 		lua_rawgeti(L, LUA_REGISTRYINDEX, cb_onevent_ref);
@@ -269,14 +267,12 @@ static int lmic_setupChannel(lua_State *L) {
 	u4_t freq = luaL_checkinteger(L, 2);
 	u2_t drmap = luaL_checkinteger(L, 3);
 	s1_t band = luaL_checkinteger(L, 4);
-	debug("call LMIC_setupChannel");
 	lua_pushboolean(L, LMIC_setupChannel(channel, freq, drmap, band));
 	return 1;
 }
 // lmic.disableChannel(channel)
 static int lmic_disableChannel(lua_State *L) {
 	u1_t channel = luaL_checkinteger(L, 1);
-	debug("call LMIC_disableChannel");
 	LMIC_disableChannel(channel);
 	return 0;
 }
@@ -284,26 +280,22 @@ static int lmic_disableChannel(lua_State *L) {
 static int lmic_setDrTxpow(lua_State *L) {
 	dr_t dr = luaL_checkinteger(L, 1);
 	s1_t txpow = luaL_checkinteger(L, 2);
-	debug("call LMIC_setDrTxpow");
 	LMIC_setDrTxpow(dr,txpow);  // set default/start DR/txpow
 	return 0;
 }
 // lmic.setAdrMode(true/false)
 static int lmic_setAdrMode(lua_State *L) {
 	bit_t enabled=luaL_checkinteger(L,1);
-	debug("call LMIC_setAdrMode");
 	LMIC_setAdrMode(enabled);        // set ADR mode (if mobile turn off)
 	return 0;
 }
 // lmic.startJoining()
 static int lmic_startJoining(lua_State *L) {
-	debug("call LMIC_startJoining");
 	lua_pushboolean(L, LMIC_startJoining());
 	return 1;
 }
 // lmic.shutdown()
 static int lmic_shutdown(lua_State *L) {
-	debug("call LMIC_shutdown");
 	LMIC_shutdown();
 	return 0;
 }
@@ -325,70 +317,74 @@ static int lmic_init(lua_State *L) {
 	if (rxtx_pin != GPIO_ID_NONE)
 		luaL_argcheck(L, platform_gpio_exists(rxtx_pin) , 5, "Invalid pin");
     //
-	debug("call os_init");
 	os_init();
-	debug("call LMIC_init");
 	LMIC_init();
 	return 0;
 }
 // lmic.reset()
 static int lmic_reset(lua_State *L) {
-	debug("call LMIC_reset");
+	if (dio0_pin != GPIO_ID_NONE) {
+		platform_gpio_mode(dio0_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+	}
+	if (dio1_pin != GPIO_ID_NONE) {
+		platform_gpio_mode(dio1_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+	}
+	if (dio2_pin != GPIO_ID_NONE) {
+		platform_gpio_mode(dio2_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+	}
 	LMIC_reset();
 	return 0;
 }
 // lmic.clrTxData()
 static int lmic_clrTxData(lua_State *L) {
-	debug("call LMIC_clrTxData");
 	LMIC_clrTxData();
 	return 0;
 }
 // lmic.setTxData()
 static int lmic_setTxData(lua_State *L) {
-	debug("call LMIC_setTxData");
 	LMIC_setTxData();
 	return 0;
 }
+u8 dataBuf[256];
+// lmic.setTxData2(port,data,confirmed)
 static int lmic_setTxData2(lua_State *L) {
-	debug("call LMIC_setTxData2");
-	//int   LMIC_setTxData2   (u1_t port, xref2u1_t data, u1_t dlen, u1_t confirmed);
+	u1_t port=luaL_checkinteger(L,1);
+	u1_t confirmed=luaL_optint(L,3,0);
+	size_t size;
+	const char *dk=luaL_checklstring(L,2,&size);
+	strncpy(dataBuf,(xref2u1_t)dk,size);
+	lua_pushboolean(L, LMIC_setTxData2(port,dataBuf,size,confirmed));
 	return 1;
 }
 // lmic.sendAlive()
 static int lmic_sendAlive(lua_State *L) {
-	debug("call LMIC_sendAlive");
 	LMIC_sendAlive();
 	return 0;
 }
 // lmic.enableTracking(tryBcnInfo)
 static int lmic_enableTracking(lua_State *L) {
 	u1_t tryBcnInfo=luaL_checkinteger(L,1);
-	debug("call LMIC_enableTracking");
 	lua_pushboolean(L, LMIC_enableTracking  (tryBcnInfo));
 	return 1;
 }
 // lmic.disableTracking()
 static int lmic_disableTracking(lua_State *L) {
-	debug("call LMIC_disableTracking");
 	LMIC_disableTracking();
 	return 0;
 }
 // lmic.stopPingable()
 static int lmic_stopPingable(lua_State *L) {
-	debug("call LMIC_stopPingable");
 	LMIC_stopPingable();
 	return 0;
 }
 // lmic.setPingable(intvExp)
 static int lmic_setPingable(lua_State *L) {
 	u1_t intvExp=luaL_checkinteger(L,1);
-	debug("call LMIC_setPingable");
 	LMIC_setPingable(intvExp);
 	return 0;
 }
 // lmic.tryRejoin()
 static int lmic_tryRejoin(lua_State *L) {
-	debug("call LMIC_tryRejoin");
 	LMIC_tryRejoin();
 	return 0;
 }
@@ -410,18 +406,19 @@ static int lmic_setSession(lua_State *L) {
 	size_t size;
 	const char *nwkKey=luaL_checklstring(L,3,&size);
 	const char *artKey=luaL_checklstring(L,4,&size);
-	debug("call LMIC_setSession");
 	LMIC_setSession (netid,devaddr,(xref2u1_t)nwkKey,(xref2u1_t)artKey);
 	return 0;
 }
 // lmic.setLinkCheckMode(enabled)
 static int lmic_setLinkCheckMode(lua_State *L) {
 	bit_t enabled=luaL_checkinteger(L,1);
-	debug("call LMIC_setLinkCheckMode");
 	LMIC_setLinkCheckMode (enabled);
 	return 0;
 }
-
+static int lmic_debugLevel(lua_State *L) {
+	LMIC_DEBUG_LEVEL=luaL_checkinteger(L,1);
+	return 0;
+}
 // Module function map
 static const LUA_REG_TYPE lmic_map[] = {
 	{ LSTRKEY( "onEvent" ), LFUNCVAL( lmic_onEvent)},
@@ -445,6 +442,7 @@ static const LUA_REG_TYPE lmic_map[] = {
 	{ LSTRKEY( "setSession" ), LFUNCVAL( lmic_setSession)},
 	{ LSTRKEY( "setOTAKeys" ), LFUNCVAL( lmic_setOTAKeys)},
 	{ LSTRKEY( "setLinkCheckMode" ), LFUNCVAL( lmic_setLinkCheckMode)},
+	{ LSTRKEY( "debugLevel" ), LFUNCVAL( lmic_debugLevel)},
 
 	{ LSTRKEY( "SCAN_TIMEOUT" ), LNUMVAL( EV_SCAN_TIMEOUT ) },
 	{ LSTRKEY( "BEACON_FOUND" ), LNUMVAL( EV_BEACON_FOUND ) },
