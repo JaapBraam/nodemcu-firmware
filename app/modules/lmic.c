@@ -219,19 +219,52 @@ void hal_failed (void){
 // KEYS and OS
 //===============================================================================================
 
+static void fromHex ( uint8 *out,uint8 *msg, size_t len){
+  int i, n = len;
+  const uint8 *p;
+  uint8 b, *q;
+  uint8 c;
+
+  for (i = 0, p = msg, q = out; i < n; i++) {
+     if (*p >= '0' && *p <= '9') {
+       b = *p++ - '0';
+     } else if (*p >= 'a' && *p <= 'f') {
+       b = *p++ - ('a' - 10);
+     } else if (*p >= 'A' && *p <= 'F') {
+       b = *p++ - ('A' - 10);
+     }
+     if ((i&1) == 0) {
+       c = b<<4;
+     } else {
+       *q++ = c+ b;
+     }
+  }
+}
+
+static void reverseBytes(u8 *start, int size) {
+    u8 *lo = start;
+    u8 *hi = start + size - 1;
+    u8 swap;
+    while (lo < hi) {
+        swap = *lo;
+        *lo++ = *hi;
+        *hi-- = swap;
+    }
+}
+
 u8 devKey[16];
 void os_getDevKey (xref2u1_t buf){
-	strncpy(buf,devKey,16);
+	c_memcpy(buf,devKey,16);
 }
 
 u8 artEui[8];
 void os_getArtEui (xref2u1_t buf){
-	strncpy(buf,artEui,8);
+	c_memcpy(buf,artEui,8);
 }
 
 u8 devEui[8];
 void os_getDevEui (xref2u1_t buf){
-	strncpy(buf,devEui,8);
+	c_memcpy(buf,devEui,8);
 }
 
 
@@ -392,20 +425,26 @@ static int lmic_tryRejoin(lua_State *L) {
 static int lmic_setOTAKeys(lua_State *L) {
 	size_t size;
 	const char *dk=luaL_checklstring(L,1,&size);
-	strncpy(devKey,(xref2u1_t)dk,16);
+	fromHex(devKey,(xref2u1_t)dk,32);
 	const char *ae=luaL_checklstring(L,2,&size);
-	strncpy(artEui,(xref2u1_t)ae,8);
+	fromHex(artEui,(xref2u1_t)ae,16);
+	reverseBytes(artEui,8);
 	const char *de=luaL_checklstring(L,3,&size);
-	strncpy(devEui,(xref2u1_t)de,8);
+	fromHex(devEui,(xref2u1_t)de,16);
+	reverseBytes(devEui,8);
 	return 0;
 }
 // lmic.setSession(netid,devaddr,nwkKey,artKey)
+u8 nwkKey[16];
+u8 artKey[16];
 static int lmic_setSession(lua_State *L) {
 	u4_t netid=luaL_checkinteger(L,1);
 	devaddr_t devaddr=luaL_checkinteger(L,2);
 	size_t size;
-	const char *nwkKey=luaL_checklstring(L,3,&size);
-	const char *artKey=luaL_checklstring(L,4,&size);
+	const char *nk=luaL_checklstring(L,3,&size);
+	fromHex(nwkKey,(xref2u1_t)nk,32);
+	const char *ak=luaL_checklstring(L,4,&size);
+	fromHex(artKey,(xref2u1_t)ak,32);
 	LMIC_setSession (netid,devaddr,(xref2u1_t)nwkKey,(xref2u1_t)artKey);
 	return 0;
 }
