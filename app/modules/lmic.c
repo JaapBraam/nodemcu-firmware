@@ -269,7 +269,28 @@ void os_getDevEui (xref2u1_t buf){
 
 
 static int cb_onevent_ref=LUA_NOREF;
-void onEvent(ev_t e){
+static int cb_ondata_ref=LUA_NOREF;
+static int cb_onack_ref=LUA_NOREF;
+void onEvent(ev_t e) {
+	if (e == EV_TXCOMPLETE) {
+		if (LMIC.txrxFlags & TXRX_ACK) {
+			if (cb_onack_ref != LUA_NOREF) {
+				lua_State *L = lua_getstate();
+				lua_rawgeti(L, LUA_REGISTRYINDEX, cb_onack_ref);
+				lua_call(L, 0, 0);
+			}
+		}
+		if (LMIC.dataLen > 0) {
+			if (cb_ondata_ref != LUA_NOREF) {
+				lua_State *L = lua_getstate();
+				lua_rawgeti(L, LUA_REGISTRYINDEX, cb_ondata_ref);
+				lua_pushinteger(L, LMIC.frame[LMIC.dataBeg - 1]); 		// port
+				lua_pushlstring(L, (char *) LMIC.frame + LMIC.dataBeg,
+						LMIC.dataLen); 	// data
+				lua_call(L, 2, 0);
+			}
+		}
+	}
 	if (cb_onevent_ref != LUA_NOREF) {
 		lua_State *L = lua_getstate();
 		lua_rawgeti(L, LUA_REGISTRYINDEX, cb_onevent_ref);
@@ -290,6 +311,28 @@ static int lmic_onEvent(lua_State *L) {
 	int old_ref=cb_onevent_ref;
 	cb_onevent_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	if (old_ref != LUA_NOREF && cb_onevent_ref != old_ref) {
+		luaL_unref(L,LUA_REGISTRYINDEX,old_ref);
+	}
+	return 0;
+}
+// lmic.onAck(cb())
+static int lmic_onAck(lua_State *L) {
+	luaL_argcheck(L,lua_isfunction(L,1),1,"function expected");
+	lua_pushvalue(L, 1);
+	int old_ref=cb_onack_ref;
+	cb_onack_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	if (old_ref != LUA_NOREF && cb_onack_ref != old_ref) {
+		luaL_unref(L,LUA_REGISTRYINDEX,old_ref);
+	}
+	return 0;
+}
+// lmic.onData(cb(port,data))
+static int lmic_onData(lua_State *L) {
+	luaL_argcheck(L,lua_isfunction(L,1),1,"function expected");
+	lua_pushvalue(L, 1);
+	int old_ref=cb_ondata_ref;
+	cb_ondata_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	if (old_ref != LUA_NOREF && cb_ondata_ref != old_ref) {
 		luaL_unref(L,LUA_REGISTRYINDEX,old_ref);
 	}
 	return 0;
@@ -385,7 +428,7 @@ static int lmic_setTxData2(lua_State *L) {
 	u1_t confirmed=luaL_optint(L,3,0);
 	size_t size;
 	const char *dk=luaL_checklstring(L,2,&size);
-	strncpy(dataBuf,(xref2u1_t)dk,size);
+	c_memcpy(dataBuf,(xref2u1_t)dk,size);
 	lua_pushboolean(L, LMIC_setTxData2(port,dataBuf,size,confirmed));
 	return 1;
 }
@@ -461,6 +504,8 @@ static int lmic_debugLevel(lua_State *L) {
 // Module function map
 static const LUA_REG_TYPE lmic_map[] = {
 	{ LSTRKEY( "onEvent" ), LFUNCVAL( lmic_onEvent)},
+	{ LSTRKEY( "onAck" ), LFUNCVAL( lmic_onAck)},
+	{ LSTRKEY( "onData" ), LFUNCVAL( lmic_onData)},
 	{ LSTRKEY( "init" ), LFUNCVAL( lmic_init)},
 	{ LSTRKEY( "setupChannel" ), LFUNCVAL( lmic_setupChannel)},
 	{ LSTRKEY( "disableChannel" ), LFUNCVAL( lmic_disableChannel)},
@@ -483,6 +528,26 @@ static const LUA_REG_TYPE lmic_map[] = {
 	{ LSTRKEY( "setLinkCheckMode" ), LFUNCVAL( lmic_setLinkCheckMode)},
 	{ LSTRKEY( "debugLevel" ), LFUNCVAL( lmic_debugLevel)},
 
+	{ LSTRKEY("DR_SF12"), LNUMVAL(DR_SF12)},
+	{ LSTRKEY("DR_SF11"), LNUMVAL(DR_SF11)},
+	{ LSTRKEY("DR_SF10"), LNUMVAL(DR_SF10)},
+	{ LSTRKEY("DR_SF9"), LNUMVAL(DR_SF9)},
+	{ LSTRKEY("DR_SF8"), LNUMVAL(DR_SF8)},
+	{ LSTRKEY("DR_SF7"), LNUMVAL(DR_SF7)},
+	{ LSTRKEY("DR_SF7B"), LNUMVAL(DR_SF7B)},
+	{ LSTRKEY("DR_FSK"), LNUMVAL(DR_FSK)},
+	{ LSTRKEY("DR_NONE"), LNUMVAL(DR_NONE)},
+
+	{ LSTRKEY("CR_4_5"), LNUMVAL(CR_4_5)},
+	{ LSTRKEY("CR_4_6"), LNUMVAL(CR_4_6)},
+	{ LSTRKEY("CR_4_7"), LNUMVAL(CR_4_7)},
+	{ LSTRKEY("CR_4_8"), LNUMVAL(CR_4_8)},
+
+	{ LSTRKEY("BW125"), LNUMVAL(BW125)},
+	{ LSTRKEY("BW250"), LNUMVAL(BW250)},
+	{ LSTRKEY("BW500"), LNUMVAL(BW500)},
+	{ LSTRKEY("BWrfu"), LNUMVAL(BWrfu)},
+
 	{ LSTRKEY( "SCAN_TIMEOUT" ), LNUMVAL( EV_SCAN_TIMEOUT ) },
 	{ LSTRKEY( "BEACON_FOUND" ), LNUMVAL( EV_BEACON_FOUND ) },
 	{ LSTRKEY( "BEACON_MISSED" ), LNUMVAL( EV_BEACON_MISSED ) },
@@ -498,6 +563,8 @@ static const LUA_REG_TYPE lmic_map[] = {
 	{ LSTRKEY( "RXCOMPLETE" ), LNUMVAL( EV_RXCOMPLETE ) },
 	{ LSTRKEY( "LINK_DEAD" ), LNUMVAL( EV_LINK_DEAD ) },
 	{ LSTRKEY( "LINK_ALIVE" ), LNUMVAL( EV_LINK_ALIVE ) },
+	{ LSTRKEY( "SCAN_FOUND"), LNUMVAL( EV_SCAN_FOUND) },
+	{ LSTRKEY( "TXSTART"), LNUMVAL( EV_TXSTART) },
 
 	{ LNILKEY, LNILVAL }
 };

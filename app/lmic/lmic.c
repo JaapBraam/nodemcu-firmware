@@ -545,15 +545,12 @@ void LMIC_setPingable (u1_t intvExp) {
 //
 // BEG: EU868 related stuff
 //
-enum { NUM_DEFAULT_CHANNELS=6 };
-static const u4_t iniChannelFreq[12] = {
+enum { NUM_DEFAULT_CHANNELS=3 };
+static const u4_t iniChannelFreq[6] = {
     // Join frequencies and duty cycle limit (0.1%)
-    EU868_F1|BAND_MILLI, EU868_J4|BAND_MILLI,
-    EU868_F2|BAND_MILLI, EU868_J5|BAND_MILLI,
-    EU868_F3|BAND_MILLI, EU868_J6|BAND_MILLI,
+    EU868_F1|BAND_MILLI, EU868_F2|BAND_MILLI, EU868_F3|BAND_MILLI,
     // Default operational frequencies
     EU868_F1|BAND_CENTI, EU868_F2|BAND_CENTI, EU868_F3|BAND_CENTI,
-    EU868_F4|BAND_MILLI, EU868_F5|BAND_MILLI, EU868_F6|BAND_DECI
 };
 
 static void initDefaultChannels (bit_t join) {
@@ -562,8 +559,8 @@ static void initDefaultChannels (bit_t join) {
     os_clearMem(&LMIC.bands, sizeof(LMIC.bands));
 
     LMIC.channelMap = 0x3F;
-    u1_t su = join ? 0 : 6;
-    for( u1_t fu=0; fu<6; fu++,su++ ) {
+    u1_t su = join ? 0 : 3;
+    for( u1_t fu=0; fu<3; fu++,su++ ) {
         LMIC.channelFreq[fu]  = iniChannelFreq[su];
         LMIC.channelDrMap[fu] = DR_RANGE_MAP(DR_SF12,DR_SF7);
     }
@@ -714,7 +711,7 @@ static ostime_t nextJoinState (void) {
 
     // Try 869.x and then 864.x with same DR
     // If both fail try next lower datarate
-    if( ++LMIC.txChnl == 6 )
+    if( ++LMIC.txChnl == 3 )
         LMIC.txChnl = 0;
     if( (++LMIC.txCnt & 1) == 0 ) {
         // Lower DR every 2nd try (having tried 868.x and 864.x with the same DR)
