@@ -23,40 +23,43 @@ static u32 nss_pin=GPIO_ID_NONE;
 static u32 rst_pin=GPIO_ID_NONE;
 static u32 rxtx_pin=GPIO_ID_NONE;
 
-static u32 dio0_pin=GPIO_ID_NONE;
-static u32 dio0_mask;
-static u32 dio1_pin=GPIO_ID_NONE;
-static u32 dio1_mask;
-static u32 dio2_pin=GPIO_ID_NONE;
-static u32 dio2_mask;
+//static u32 dio0_pin=GPIO_ID_NONE;
+//static u32 dio0_mask;
+//static u32 dio1_pin=GPIO_ID_NONE;
+//static u32 dio1_mask;
+//static u32 dio2_pin=GPIO_ID_NONE;
+//static u32 dio2_mask;
 
 extern void radio_irq_handler(u8 dio);
+extern u8 radio_has_irq();
 
-static uint32_t  dio_hook(uint32_t  ret_gpio_status) {
-	if (ret_gpio_status & dio0_mask){
-		radio_irq_handler(0);
-		//c_printf("dio %d\n",0);
-		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio0_mask);
-		ret_gpio_status&=!dio0_mask;
-	}
-	if (ret_gpio_status & dio1_mask){
-		radio_irq_handler(1);
-		//c_printf("dio %d\n",1);
-		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio1_mask);
-		ret_gpio_status&=!dio1_mask;
-	}
-	if (ret_gpio_status & dio2_mask){
-		radio_irq_handler(2);
-		//c_printf("dio %d\n",2);
-		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio2_mask);
-		ret_gpio_status&=!dio2_mask;
-	}
-	return ret_gpio_status;
-}
+//static uint32_t  dio_hook(uint32_t  ret_gpio_status) {
+//	if (ret_gpio_status & dio0_mask){
+//		radio_irq_handler(0);
+//		//c_printf("dio %d\n",0);
+//		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio0_mask);
+//		ret_gpio_status&=!dio0_mask;
+//	}
+//	if (ret_gpio_status & dio1_mask){
+//		radio_irq_handler(1);
+//		//c_printf("dio %d\n",1);
+//		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio1_mask);
+//		ret_gpio_status&=!dio1_mask;
+//	}
+//	if (ret_gpio_status & dio2_mask){
+//		radio_irq_handler(2);
+//		//c_printf("dio %d\n",2);
+//		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, ret_gpio_status & dio2_mask);
+//		ret_gpio_status&=!dio2_mask;
+//	}
+//	return ret_gpio_status;
+//}
 
 static const os_param_t LMIC_OWNER = 0x6C6D6963; // "lmic"
 
 static void ICACHE_RAM_ATTR lmic_cb(os_param_t p) {
+  if (radio_has_irq())
+	  radio_irq_handler(0);
   os_runloop_once();
   platform_hw_timer_arm_us(LMIC_OWNER, 10);
 }
@@ -85,28 +88,28 @@ void hal_init(void) {
 	rtctime_settimeofday(&tv);
 
 	// IRQ
-	u32 mask=0;
-	if (dio0_pin != GPIO_ID_NONE) {
-		platform_gpio_mode(dio0_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
-		platform_gpio_intr_init(dio0_pin,GPIO_PIN_INTR_POSEDGE);
-		dio0_mask=BIT(pin_num[dio0_pin]);
-		mask|=dio0_mask;
-	}
-	if (dio1_pin != GPIO_ID_NONE){
-		platform_gpio_mode(dio1_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
-		platform_gpio_intr_init(dio1_pin,GPIO_PIN_INTR_POSEDGE);
-		dio1_mask=BIT(pin_num[dio1_pin]);
-		mask|=dio1_mask;
-	}
-	if (dio2_pin != GPIO_ID_NONE){
-		platform_gpio_mode(dio2_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
-		platform_gpio_intr_init(dio2_pin,GPIO_PIN_INTR_POSEDGE);
-		dio2_mask=BIT(pin_num[dio2_pin]);
-		mask|=dio2_mask;
-	}
-	if (mask){
-		platform_gpio_register_intr_hook(mask, dio_hook);
-	}
+//	u32 mask=0;
+//	if (dio0_pin != GPIO_ID_NONE) {
+//		platform_gpio_mode(dio0_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+//		platform_gpio_intr_init(dio0_pin,GPIO_PIN_INTR_POSEDGE);
+//		dio0_mask=BIT(pin_num[dio0_pin]);
+//		mask|=dio0_mask;
+//	}
+//	if (dio1_pin != GPIO_ID_NONE){
+//		platform_gpio_mode(dio1_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+//		platform_gpio_intr_init(dio1_pin,GPIO_PIN_INTR_POSEDGE);
+//		dio1_mask=BIT(pin_num[dio1_pin]);
+//		mask|=dio1_mask;
+//	}
+//	if (dio2_pin != GPIO_ID_NONE){
+//		platform_gpio_mode(dio2_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+//		platform_gpio_intr_init(dio2_pin,GPIO_PIN_INTR_POSEDGE);
+//		dio2_mask=BIT(pin_num[dio2_pin]);
+//		mask|=dio2_mask;
+//	}
+//	if (mask){
+//		platform_gpio_register_intr_hook(mask, dio_hook);
+//	}
 	// lmic callback
 	platform_hw_timer_init(LMIC_OWNER, FRC1_SOURCE, FALSE);
 	platform_hw_timer_set_func(LMIC_OWNER,lmic_cb,0);
@@ -377,21 +380,23 @@ static int lmic_shutdown(lua_State *L) {
 }
 // lua lmic.init(nss,dio0,dio1,dio2,rst,rxtx)
 static int lmic_init(lua_State *L) {
-	nss_pin = luaL_checkinteger(L, 1);
+	nss_pin = luaL_optinteger(L, 1, 0);
 	luaL_argcheck(L, platform_gpio_exists(nss_pin), 1, "Invalid pin");
-	dio0_pin = luaL_checkinteger(L, 2);
-	luaL_argcheck(L, platform_gpio_exists(dio0_pin) && dio0_pin > 0, 2, "Invalid pin");
-	dio1_pin = luaL_checkinteger(L, 3);
-	luaL_argcheck(L, platform_gpio_exists(dio1_pin) && dio1_pin > 0, 3, "Invalid pin");
-	dio2_pin = luaL_optinteger(L, 4,GPIO_ID_NONE);
-	if (dio2_pin != GPIO_ID_NONE)
-		luaL_argcheck(L, platform_gpio_exists(dio2_pin) && dio2_pin > 0, 4, "Invalid pin");
-	rst_pin = luaL_optinteger(L, 5,GPIO_ID_NONE);
+//	dio0_pin = luaL_optinteger(L, 2,GPIO_ID_NONE);
+//	if (dio0_pin != GPIO_ID_NONE)
+//		luaL_argcheck(L, platform_gpio_exists(dio0_pin) && dio0_pin > 0, 2, "Invalid pin");
+//	dio1_pin = luaL_optinteger(L, 3,GPIO_ID_NONE);
+//	if (dio1_pin != GPIO_ID_NONE)
+//		luaL_argcheck(L, platform_gpio_exists(dio1_pin) && dio1_pin > 0, 3, "Invalid pin");
+//	dio2_pin = luaL_optinteger(L, 4,GPIO_ID_NONE);
+//	if (dio2_pin != GPIO_ID_NONE)
+//		luaL_argcheck(L, platform_gpio_exists(dio2_pin) && dio2_pin > 0, 4, "Invalid pin");
+	rst_pin = luaL_optinteger(L, 2,GPIO_ID_NONE);
 	if (rst_pin != GPIO_ID_NONE)
-		luaL_argcheck(L, platform_gpio_exists(rst_pin) , 5, "Invalid pin");
-	rxtx_pin = luaL_optinteger(L, 6,GPIO_ID_NONE);
+		luaL_argcheck(L, platform_gpio_exists(rst_pin) , 2, "Invalid pin");
+	rxtx_pin = luaL_optinteger(L, 3,GPIO_ID_NONE);
 	if (rxtx_pin != GPIO_ID_NONE)
-		luaL_argcheck(L, platform_gpio_exists(rxtx_pin) , 5, "Invalid pin");
+		luaL_argcheck(L, platform_gpio_exists(rxtx_pin) , 3, "Invalid pin");
     //
 	os_init();
 	LMIC_init();
@@ -399,15 +404,15 @@ static int lmic_init(lua_State *L) {
 }
 // lmic.reset()
 static int lmic_reset(lua_State *L) {
-	if (dio0_pin != GPIO_ID_NONE) {
-		platform_gpio_mode(dio0_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
-	}
-	if (dio1_pin != GPIO_ID_NONE) {
-		platform_gpio_mode(dio1_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
-	}
-	if (dio2_pin != GPIO_ID_NONE) {
-		platform_gpio_mode(dio2_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
-	}
+//	if (dio0_pin != GPIO_ID_NONE) {
+//		platform_gpio_mode(dio0_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+//	}
+//	if (dio1_pin != GPIO_ID_NONE) {
+//		platform_gpio_mode(dio1_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+//	}
+//	if (dio2_pin != GPIO_ID_NONE) {
+//		platform_gpio_mode(dio2_pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_FLOAT);
+//	}
 	LMIC_reset();
 	return 0;
 }

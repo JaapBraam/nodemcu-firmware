@@ -859,6 +859,24 @@ void radio_irq_handler (u1_t dio) {
     os_setCallback(&LMIC.osjob, LMIC.osjob.func);
 }
 
+// called by hal to check if we got one IRQ
+u1_t radio_has_irq (void) {
+    u1_t flags ;
+    if( (readReg(RegOpMode) & OPMODE_LORA) != 0) { // LORA modem
+        flags = readReg(LORARegIrqFlags);
+        if( flags & ( IRQ_LORA_TXDONE_MASK | IRQ_LORA_RXDONE_MASK | IRQ_LORA_RXTOUT_MASK ) )
+            return 1;
+    } else { // FSK modem
+        flags = readReg(FSKRegIrqFlags2);
+        if ( flags & ( IRQ_FSK2_PACKETSENT_MASK | IRQ_FSK2_PAYLOADREADY_MASK) )
+            return 1;
+        flags = readReg(FSKRegIrqFlags1);
+        if ( flags & IRQ_FSK1_TIMEOUT_MASK )
+            return 1;
+    }
+    return 0;
+}
+
 void os_radio (u1_t mode) {
     hal_disableIRQs();
     switch (mode) {
