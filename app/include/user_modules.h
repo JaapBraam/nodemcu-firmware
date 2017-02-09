@@ -17,19 +17,19 @@
 // includes general purpose interface modules which require at most two GPIO pins.
 // See https://github.com/nodemcu/nodemcu-firmware/pull/1127 for discussions.
 // New modules should be disabled by default and added in alphabetical order.
-#define LUA_USE_MODULES_ADC
+//#define LUA_USE_MODULES_ADC
 //#define LUA_USE_MODULES_ADXL345
 //#define LUA_USE_MODULES_AM2320
 //#define LUA_USE_MODULES_APA102
 #define LUA_USE_MODULES_BIT
 //#define LUA_USE_MODULES_BMP085
 //#define LUA_USE_MODULES_BME280
-//#define LUA_USE_MODULES_CJSON
+#define LUA_USE_MODULES_CJSON
 //#define LUA_USE_MODULES_COAP
 //#define LUA_USE_MODULES_CRON
 //#define LUA_USE_MODULES_CRYPTO
-#define LUA_USE_MODULES_DHT
-//#define LUA_USE_MODULES_ENCODER
+//#define LUA_USE_MODULES_DHT
+#define LUA_USE_MODULES_ENCODER
 //#define LUA_USE_MODULES_ENDUSER_SETUP // USE_DNS in dhcpserver.h needs to be enabled for this module to work.
 #define LUA_USE_MODULES_FILE
 //#define LUA_USE_MODULES_GDBSTUB
@@ -40,10 +40,10 @@
 #define LUA_USE_MODULES_I2C
 //#define LUA_USE_MODULES_L3G4200D
 //#define LUA_USE_MODULES_MDNS
-#define LUA_USE_MODULES_MQTT
+//#define LUA_USE_MODULES_MQTT
 #define LUA_USE_MODULES_NET
 #define LUA_USE_MODULES_NODE
-#define LUA_USE_MODULES_OW
+//#define LUA_USE_MODULES_OW
 //#define LUA_USE_MODULES_PCM
 //#define LUA_USE_MODULES_PERF
 //#define LUA_USE_MODULES_PWM
@@ -52,15 +52,15 @@
 //#define LUA_USE_MODULES_ROTARY
 //#define LUA_USE_MODULES_RTCFIFO
 //#define LUA_USE_MODULES_RTCMEM
-//#define LUA_USE_MODULES_RTCTIME
+#define LUA_USE_MODULES_RTCTIME
 //#define LUA_USE_MODULES_SIGMA_DELTA
-//#define LUA_USE_MODULES_SNTP
+#define LUA_USE_MODULES_SNTP
 //#define LUA_USE_MODULES_SOMFY
 #define LUA_USE_MODULES_SPI
 //#define LUA_USE_MODULES_STRUCT
 //#define LUA_USE_MODULES_SWITEC
 //#define LUA_USE_MODULES_TM1829
-#define LUA_USE_MODULES_TLS
+//#define LUA_USE_MODULES_TLS
 #define LUA_USE_MODULES_TMR
 //#define LUA_USE_MODULES_TSL2561
 //#define LUA_USE_MODULES_U8G
@@ -71,6 +71,7 @@
 //#define LUA_USE_MODULES_WPS
 //#define LUA_USE_MODULES_WS2801
 //#define LUA_USE_MODULES_WS2812
+#define LUA_USE_MODULES_SX1276
 
 #endif  /* LUA_CROSS_COMPILER */
 #endif	/* __USER_MODULES_H__ */
