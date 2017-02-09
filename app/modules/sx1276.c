@@ -322,13 +322,67 @@ static void setupSPI(u8 nss) {
 	PLATFORM_SPI_CPHA_LOW, 3);
 }
 
+typedef enum {
+	idle_state,
+	hopping_state,
+	hopping_done
+} State;
+
+static State state=idle_state;
+
+u32 hopper_hops=0;
+u16 hopper_delay=100;
+u32 hopper_freqs[]={868100000,868300000,868500000};
+u8 hopper_channel=0;
+u8 hopper_best_rssi=0xFF;
+u8 hopper_best_channel=0xFF;
+
+static u16 hopper(){
+	u8 flags = read(FSKRegIrqFlags1);
+	if (flags&IRQ_FSK1_RXREADY_MASK){
+		if (flags&IRQ_FSK1_RSSI_MASK){
+			u8 rssi = read(LORARegRssiValue);
+			if (hopper_channel == hopper_best_channel){
+				// found the channel with the best rssi
+				state=hopping_done;
+				// reset hopper for next session
+				hopper_best_rssi=0xFF;
+				hopper_best_channel=0xFF;
+			} else if (rssi < hopper_best_rssi){
+				hopper_best_channel=hopper_channel;
+				hopper_best_rssi=rssi;
+			}
+		};
+		// hop
+		hopper_channel=(hopper_channel+1)%3;
+		// next frequency
+		hopper_hops++;
+	} else {
+		hopper_delay++;
+	}
+	return hopper_delay;
+}
+
 static const os_param_t SX1276_TIMER_OWNER = 0x4c6f5261; // LoRa
 
 static void ICACHE_RAM_ATTR timer_async_cb(os_param_t p) {
+	u16 delay=0;
+	if (state==hopping_state){
+		delay=hopper();
+	}
+	if (state==hopping_done){
+		// start CAD
+	}
+
+	if (delay) {
+		platform_hw_timer_arm_us(SX1276_TIMER_OWNER, delay);
+	} else {
+		platform_hw_timer_close(SX1276_TIMER_OWNER);
+	}
 }
 
 static void startTimer(u32 microseconds) {
-	platform_hw_timer_init(SX1276_TIMER_OWNER, FRC1_SOURCE, true);
+	platform_hw_timer_init(SX1276_TIMER_OWNER, FRC1_SOURCE, false);
 	platform_hw_timer_set_func(SX1276_TIMER_OWNER, timer_async_cb, 0);
 	platform_hw_timer_arm_us(SX1276_TIMER_OWNER, microseconds);
 }
